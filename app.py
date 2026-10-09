@@ -1,11 +1,11 @@
 import os
-import sys
-import time
 import requests
-import subprocess
 import streamlit as st
 from pathlib import Path
 from dotenv import load_dotenv
+
+# Direct import of backend execution logic
+from api import run_crew_workflow
 
 # Load environment variables
 project_folder = Path(__file__).resolve().parent
@@ -18,44 +18,26 @@ try:
 except Exception:
     pass
 
-
-# Start FastAPI background process if running on Cloud or if server isn't active
-@st.cache_resource
-def ensure_fastapi_server_running(host: str = "127.0.0.1", port: int = 8000):
-    """Ensures FastAPI is running in the background for Streamlit Cloud or standalone execution."""
-    try:
-        # Check if the server is already reachable
-        requests.get(f"http://{host}:{port}/docs", timeout=1)
-    except Exception:
-        # If not reachable, launch FastAPI via Uvicorn in a background process
-        cmd = [sys.executable, "-m", "uvicorn", "api:app", "--host", host, "--port", str(port)]
-        subprocess.Popen(cmd)
-        time.sleep(3)  # Allow Uvicorn time to initialize
-
-
 st.set_page_config(page_title="CrewAI RAG Scanner", layout="centered")
 
 # Sidebar: Flexible configuration for forks and local running
 st.sidebar.title("API Configuration")
 
-# Allow option to toggle custom server or use local auto-start
-use_custom_endpoint = st.sidebar.checkbox("Use Custom API Endpoint", value=False)
+use_custom_endpoint = st.sidebar.checkbox("Use External FastAPI Endpoint", value=False)
 
 if use_custom_endpoint:
     endpoint_url = st.sidebar.text_input(
         "FastAPI Endpoint URL",
         value="http://127.0.0.1:8000/ask",
-        help="Enter your custom FastAPI backend URL if hosted separately."
+        help="Enter an external FastAPI backend URL if running separately."
     )
 else:
-    endpoint_url = "http://127.0.0.1:8000/ask"
+    endpoint_url = "Direct Import (In-Memory Engine)"
     st.sidebar.text_input(
-        "Active FastAPI Endpoint (Read Only)",
+        "Backend Execution Mode",
         value=endpoint_url,
         disabled=True
     )
-    # Ensure FastAPI is running locally/in container background
-    ensure_fastapi_server_running()
 
 st.title("AI Document Scanner (CrewAI + RAG)")
 st.caption("Powered by Multi-Agent CrewAI, FastAPI, FAISS & Google Gemini")
@@ -75,16 +57,26 @@ if st.button("Run Multi-Agent Crew"):
     else:
         try:
             with st.spinner("CrewAI agents are working on your document..."):
-                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
-                data = {"question": question.strip()}
-
-                response = requests.post(endpoint_url, files=files, data=data, timeout=180)
-                result = response.json()
-
-                if response.status_code == 200 and result.get("success"):
-                    st.subheader("CrewAI Final Answer")
-                    st.write(result["answer"])
+                if use_custom_endpoint:
+                    # External FastAPI network request
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                    data = {"question": question.strip()}
+                    response = requests.post(endpoint_url, files=files, data=data, timeout=180)
+                    result = response.json()
+                    
+                    if response.status_code == 200 and result.get("success"):
+                        st.subheader("CrewAI Final Answer")
+                        st.write(result["answer"])
+                    else:
+                        st.error(result.get("detail", "Error running CrewAI execution."))
                 else:
-                    st.error(result.get("detail", "Error running CrewAI execution."))
+                    # Direct in-memory execution for Streamlit Cloud
+                    answer = run_crew_workflow(
+                        file_bytes=uploaded_file.getvalue(),
+                        file_name=uploaded_file.name,
+                        question=question.strip()
+                    )
+                    st.subheader("CrewAI Final Answer")
+                    st.write(answer)
         except Exception as err:
-            st.error(f"Could not connect to FastAPI server at {endpoint_url}: {str(err)}")
+            st.error(f"Execution failed: {str(err)}")

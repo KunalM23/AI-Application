@@ -28,6 +28,9 @@ def health():
 
 def run_crew_workflow(file_bytes: bytes, file_name: str, question: str) -> str:
     """Parses text and runs CrewAI multi-agent workflow."""
+    if not os.getenv("GEMINI_API_KEY"):
+        raise ValueError("GEMINI_API_KEY environment variable is missing.")
+
     doc_text = extract_text(file_bytes, file_name)
     tasks = create_rag_tasks(researcher_agent, synthesizer_agent, doc_text, question)
 
@@ -46,9 +49,6 @@ async def ask_question(
     file: UploadFile = File(...),
     question: str = Form(...)
 ):
-    if not os.getenv("GEMINI_API_KEY"):
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is missing.")
-
     try:
         file_bytes = await file.read()
         
