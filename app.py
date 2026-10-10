@@ -23,6 +23,12 @@ st.set_page_config(page_title="CrewAI RAG Scanner", layout="centered")
 # Sidebar: Flexible configuration for forks and local running
 st.sidebar.title("API Configuration")
 
+# Informational note guiding users about local vs cloud usage
+st.sidebar.info(
+    "**Note:** Check this option **only** if you are running the FastAPI server "
+    "locally on your machine (`uvicorn api:app`). Leave unchecked for Streamlit Cloud deployment."
+)
+
 use_custom_endpoint = st.sidebar.checkbox("Use External FastAPI Endpoint", value=False)
 
 if use_custom_endpoint:
